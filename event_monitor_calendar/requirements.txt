@@ -1,0 +1,4 @@
+firebase-admin==6.6.0
+pytz
+requests
+python-dateutil
