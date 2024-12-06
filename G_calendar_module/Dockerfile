@@ -1,20 +1,33 @@
-# Usar la imagen base de Python
-FROM python:3.10-slim
+# Usa una imagen base ligera con Python
+FROM python:3.9-slim-bullseye
 
-# Establecer el directorio de trabajo
+RUN mkdir /app /app/files 
+# Establece el directorio de trabajo
 WORKDIR /app
 
-# Copiar los archivos del proyecto
-COPY main.py /app/main.py
-COPY requirements.txt /app/requirements.txt
+# Instala dependencias del sistema necesarias para las librerías
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Instalar las dependencias
+# Copia el archivo de requisitos
+COPY requirements.txt .
+
+# Instala las dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Establecer las variables de entorno para manejar las credenciales
-ENV GOOGLE_APPLICATION_CREDENTIALS="/app/serviceAccountKey.json"
-ENV GOOGLE_CREDENTIALS="/app/credentials.json"
-ENV GOOGLE_TOKEN="/app/token.json"
+# Copia el código fuente de la aplicación
+COPY . .
 
-# Comando para ejecutar el script
-CMD ["python", "main.py"]
+# Crea el directorio para los archivos de configuración
+RUN mkdir -p /app/files
+
+# Configura el volumen para los archivos externos
+VOLUME /app/files
+
+# Comando para ejecutar la aplicación
+CMD ["python", "-u","main.py"]
