@@ -1,13 +1,13 @@
-# imagen a usar
-FROM ultrafunk/undetected-chromedriver
+# Imagen base
+FROM ultrafunk/undetected-chromedriver:3.20-chrome108
 
-RUN mkdir /app /app/recordings /app/screenshots
+RUN mkdir /app /app/recordings /app/screenshots /app/transcription_storage /app/files
 
 
-# Establece el directorio de trabajo
+# Set the working directory inside the container
 WORKDIR /app
 
-# Instalacion de dependencias necesarias
+# Install necessary dependencies
 RUN apt-get update && \
     apt-get install -y \
     python3 \
@@ -68,7 +68,9 @@ RUN pip3 install \
     pyaudio \
     click \
     opencv-python \
-    Pillow
+    Pillow \
+    firebase-admin
+
 
 RUN echo 'user ALL=(ALL:ALL) NOPASSWD:ALL' >> /etc/sudoers
 
@@ -84,10 +86,10 @@ WORKDIR /app
 
 #COPY chromedriver /usr/bin/chromedriver
 
-
+# Copy your application code to the container
 COPY . /app
 
-# variables de entorno
+# Set any environment variables if required
 ENV GLADIA_API_KEY="YOUR_GLADIA_API_KEY"
 ENV X_SERVER_NUM=1
 ENV SCREEN_WIDTH=1280
@@ -107,5 +109,5 @@ EXPOSE 5000
 COPY  entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# comando para correr la app
+# Define the command to run your application
 CMD ["/app/entrypoint.sh"]
