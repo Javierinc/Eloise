@@ -1,94 +1,85 @@
-import time
-import requests
-from datetime import datetime, timedelta
-import pytz  # Para manejar zonas horarias
+from flask import Flask, request, jsonify
 import firebase_admin
+import datetime as dt
 from firebase_admin import credentials, firestore
-from dateutil import parser  # Para manejar el formato de tiempo en los eventos
+import requests
 
-# Configura las credenciales de Firebase
-cred = credentials.Certificate("/app/files/serviceAccountKey.json") 
+app = Flask(__name__)
+
+# Inicializar Firebase
+cred = credentials.Certificate("/app/files/serviceAccountKey.json")
+# cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Configura la URL de la API
-API_URL = "http://localhost:5000/start-recording"  
+# Endpoint del servicio de grabación
+RECORDING_SERVICE_ENDPOINT = "http://meet-bot:5000/start-recording"
 
-# Define la zona horaria local
-local_tz = pytz.timezone("America/Santiago")
+@app.route('/')
+def home():
+    return '<h1>Contenedor Activo ✌️</h1>'
 
-def fetch_upcoming_events(hours_ahead=24):
-    """Consulta Firebase para recuperar reuniones programadas en las próximas horas."""
-    now = datetime.now(local_tz)
-    future_time = now + timedelta(hours=hours_ahead)
-
-    year = now.year
-    month = now.month
-
-    events = []
-
-    # Referencia a la colección del año y mes actuales
-    year_ref = db.collection("videocalls").document(str(year))
-    month_ref = year_ref.collection(str(month).zfill(2))  # Aseguramos formato de dos dígitos para el mes
-
-    # Consulta documentos dentro del mes
-    docs = month_ref.stream()
-    for doc in docs:
-        event = doc.to_dict()
-        event_time = parser.isoparse(event.get("time"))  # Convierte el tiempo a datetime
-        if now <= event_time <= future_time:
-            event["id"] = doc.id  # Incluye el ID del documento
-            events.append(event)
-
-    return events
-
-def send_event_to_api(event):
-    """Envía los datos del evento a la API."""
-    payload = {
-        "link": event.get("link", ""),
-        "eventId": event["id"],  # ID del evento
-        "participants": ["javierignacio.nunez@gmail.com","emma.ariasbustamante@gmail.com"],
-        # "participants": event.get("participants", []),  # Lista de participantes
-        "summary": event.get("summary", ""),
-        "time": event["time"]  # Hora del evento
-  # Resumen del evento
-    }
-    print(payload)
+@app.route('/event', methods=['POST'])
+def handle_event():
+    
     try:
-        response = requests.post(API_URL, json=payload)
+        # Recuperar el eventId del request
+        data = request.json
+        event_id = data.get('eventId')
+
+        if not event_id:
+            return jsonify({"error": "El eventId es obligatorio"}), 400
+        print(event_id)
+        # buscar los metadatos del evento en Firebase
+        event_metadata = get_event_metadata(event_id)
+
+        if not event_metadata:
+            return jsonify({"error": f"Evento con ID {event_id} no encontrado"}), 404
+
+        # Enviar los metadatos al servicio de grabación
+        send_to_recording_service(event_metadata)
+
+        return jsonify({"status": "success", "message": "Evento procesado correctamente"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def get_event_metadata(event_id):
+    """Recupera los metadatos del evento desde Firebase y los estructura."""
+    # Construir la referencia al documento en Firebase
+    now = dt.datetime.now()
+    year = str(now.year)
+    month = str(now.month).zfill(2)
+
+    doc_ref = db.collection("videocalls").document(year).collection(month).document(event_id)
+    doc = doc_ref.get()
+
+    if doc.exists:
+        # estructurar los datos en el formato especificado
+        event = doc.to_dict()
+        payload = {
+            "link": event.get("link", ""),
+            "eventId": event_id,  # ID del evento
+            "participants": event.get("participants") or ["user@user.com", "user2@user.com"],
+            "summary": event.get("summary", ""),
+            "time": event.get("time")  # Hora del evento
+        }
+        print(payload)
+        return payload
+    return None
+
+
+def send_to_recording_service(metadata):
+    """Envía los metadatos al servicio de grabación."""
+    try:
+        response = requests.post(RECORDING_SERVICE_ENDPOINT, json=metadata)
         response.raise_for_status()
-        print(f"Evento enviado con éxito: {payload}")
+        print(f"Metadatos enviados al servicio de grabación: {metadata}")
     except requests.exceptions.RequestException as e:
-        print(f"Error al enviar evento: {e}")
+        print(f"Error al enviar los metadatos al servicio de grabación: {e}")
+        raise
 
-def monitor_events(events):
-    """Monitorea eventos cargados y envía notificaciones a la API si están por comenzar."""
-    now = datetime.now(local_tz)
-    for event in events[:]:  # Iteramos sobre una copia para modificar la lista original
-        event_time = parser.isoparse(event["time"])
-        # Si el evento comienza en los próximos 10 minutos, envíalo y elimínalo de la lista
-        if now <= event_time <= now + timedelta(minutes=10):
-            send_event_to_api(event)
-            events.remove(event)  # Remover evento procesado para evitar duplicados
 
-def main():
-    """Bucle principal que consulta Firebase y monitorea reuniones."""
-    events = fetch_upcoming_events()
-    print(f"Inicialmente cargados {len(events)} eventos.")
-    for event in events:
-        print(event)
-
-    while True:
-        monitor_events(events)  # Monitorea eventos cargados en memoria
-        now = datetime.now(local_tz)
-        
-        # Cada 30 minutos, actualizamos la lista de eventos (ajusta según tu preferencia)
-        if now.minute % 30 == 0:
-            print("Actualizando lista de eventos...")
-            events = fetch_upcoming_events()
-            print(f"Se han cargado {len(events)} eventos actualizados.")
-        
-        time.sleep(60)  # Monitorea cada minuto
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=3000)
