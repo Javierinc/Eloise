@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  chatinterface:
+    image: chat_text_analysis_module
+    container_name: chat
+    ports:
+      - "8080:8501"
+    environment:
+      API_KEY_CHATGPT: "Aquí va tu API Key de ChatGPT"
+    volumes:
+      - tu_ruta:/app/transcription_storage
+      - C:tu_ruta:/app/files
+    networks:
+      - shared_network
+
+  calendar-monitor:
+    image: event_monitor_module
+    container_name: monitor
+    ports:
+      - "3000:3000"
+    volumes:
+      - tu_ruta:/app/files
+    networks:
+      - shared_network
+
+  calendar-sync:
+    image: G_calendar_module
+    container_name: calendar
+    volumes:
+      - tu_ruta:/app/files
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+  meet-bot:
+    image: recording_transcription_module
+    container_name: bot_recorder
+    ports:
+      - "5000:5000"
+    shm_size: "2g"  # Configuración de memoria compartida
+    environment:
+      USER_GMAIL: "tu cuenta gmail"
+      USER_GMAIL_PASSWORD: 'contraseña de tu gmail'
+      GLADIA_API_KEY: "API Key de Gladia"
+    volumes:
+      - tu_ruta:/app/recordings
+      - tu_ruta:/app/screenshots
+      - tu_ruta:/app/transcription_storage
+      - tu_ruta:/app/files
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    driver: bridge
